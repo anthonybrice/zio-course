@@ -87,47 +87,64 @@ object Effects {
    *  4. print something to the console (e.g. "what's your name"), then read, then print a welcome message
    */
 
-    // 1
-    val currentTime: MyIO[Long] = MyIO(() => System.currentTimeMillis())
+  // 1
+  val currentTime: MyIO[Long] = MyIO(() => System.currentTimeMillis())
 
-    // 2
-    def measure[A](computation: MyIO[A]): MyIO[(Long, A)] = for {
-      startTime <- currentTime
-      result <- computation
-      endTime <- currentTime
-    } yield (endTime - startTime, result)
+  // 2
+  def measure[A](computation: MyIO[A]): MyIO[(Long, A)] = for {
+    startTime <- currentTime
+    result <- computation
+    endTime <- currentTime
+  } yield (endTime - startTime, result)
 
-    def measure_v2[A](computation: MyIO[A]): MyIO[(Long, A)] = {
-      MyIO { () =>
-        val startTime = System.currentTimeMillis()
-        val result = computation.unsafeRun()
-        val endTime = System.currentTimeMillis()
-        (endTime - startTime, result)
-      }
+  def measure_v2[A](computation: MyIO[A]): MyIO[(Long, A)] = {
+    MyIO { () =>
+      val startTime = System.currentTimeMillis()
+      val result = computation.unsafeRun()
+      val endTime = System.currentTimeMillis()
+      (endTime - startTime, result)
     }
+  }
 
-    def demoMeasurement(): Unit = {
-      val computation = MyIO(() => {
-        println("Crunching numbers...")
-        Thread.sleep(1000)
-        println("Done!")
-        42
-      })
+  def demoMeasurement(): Unit = {
+    val computation = MyIO(() => {
+      println("Crunching numbers...")
+      Thread.sleep(1000)
+      println("Done!")
+      42
+    })
 
-      println(measure(computation).unsafeRun())
-      println(measure_v2(computation).unsafeRun())
-    }
+    println(measure(computation).unsafeRun())
+    println(measure_v2(computation).unsafeRun())
+  }
 
-    // 3
-    val readLine: MyIO[String] = MyIO(() => StdIn.readLine())
-    def putStrLn(line: String): MyIO[Unit] = MyIO(() => println(line))
+  // 3
+  val readLine: MyIO[String] = MyIO(() => StdIn.readLine())
+  def putStrLn(line: String): MyIO[Unit] = MyIO(() => println(line))
 
-    // 4
-    val program = for {
-      _ <- putStrLn("What's your name?")
-      name <- readLine
-      _ <- putStrLn(s"Welcome to Rock the JVM, $name!")
-    } yield ()
+  // 4
+  val program = for {
+    _ <- putStrLn("What's your name?")
+    name <- readLine
+    _ <- putStrLn(s"Welcome to Rock the JVM, $name!")
+  } yield ()
+
+  /**
+   * A simplified ZIO
+   */
+  case class MyZIO[-R, +E, +A](unsafeRun: R => Either[E, A]) {
+    def map[B](f: A => B): MyZIO[R, E, B] =
+      MyZIO(r => unsafeRun(r) match
+        case Left(e) => Left(e)
+        case Right(v) => Right(f(v))
+      )
+
+    def flatMap[R1 <: R, E1 >: E, B](f: A => MyZIO[R1, E1, B]): MyZIO[R1, E1, B] =
+      MyZIO(r => unsafeRun(r) match
+        case Left(e) => Left(e)
+        case Right(v) => f(v).unsafeRun(r)
+      )
+  }
 
   def main(args: Array[String]): Unit = {
     program.unsafeRun()
